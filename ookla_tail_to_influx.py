@@ -7,6 +7,9 @@ ACCESS_LOG = os.environ.get("OOKLA_ACCESS_LOG", "/opt/ookla/ooklaserver-access.l
 ARCHIVE_GLOB = os.environ.get("OOKLA_ARCHIVE_GLOB", "/opt/ookla/ooklaserver-access.log.*.gz")
 STATE_FILE = os.environ.get("OOKLA_STATE_FILE", "/var/lib/ookla-logtail/state.json")
 
+# Backfill: when set to "1", process all *.gz archives not yet processed (even on first run)
+BACKFILL_GZ = os.environ.get("OOKLA_BACKFILL_GZ", "0").strip().lower() in ("1", "true", "yes", "on")
+
 SERVER_TAG = os.environ.get("SERVER_TAG", os.uname().nodename.split(".")[0])
 
 MEASUREMENT_TOTAL = os.environ.get("MEASUREMENT_TOTAL", "ookla_speedtest_minutely")
@@ -338,6 +341,7 @@ def main():
     prefix_cache = state.get("prefix_cache", {})
     prefix_nets = build_prefix_nets(prefix_cache)
     asn_mapped_set = set(state.get("asn_mapped", []))
+    processed_archives = set(state.get("processed_archives", []))
 
     try:
         st = os.stat(ACCESS_LOG)
@@ -349,7 +353,6 @@ def main():
     offset = int(state.get("offset", 0))
     prev_inode = state.get("inode")
     pending = state.get("pending_record", "")
-    processed_archives = set(state.get("processed_archives", []))
 
     rotated_or_truncated = False
     if prev_inode is not None and (inode != prev_inode or size < offset):
@@ -359,14 +362,17 @@ def main():
     asn_map_out = []
     map_ts_s = int(time.time())
 
-    if rotated_or_truncated:
+    # Backfill/Rotation: process archives not yet processed
+    if BACKFILL_GZ or rotated_or_truncated:
         archives = sorted(glob(ARCHIVE_GLOB), key=lambda p: os.stat(p).st_mtime)
         for ap in archives:
             if ap not in processed_archives:
                 process_gz_file(ap, agg, prefix_cache, prefix_nets, asn_map_out, asn_mapped_set, map_ts_s)
                 processed_archives.add(ap)
-        offset = 0
-        pending = ""
+        # On rotation/truncate we restart reading the active file from 0
+        if rotated_or_truncated:
+            offset = 0
+            pending = ""
 
     new_offset, new_pending = process_active_file_incremental(
         ACCESS_LOG, offset, agg, pending, prefix_cache, prefix_nets, asn_map_out, asn_mapped_set, map_ts_s

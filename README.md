@@ -162,6 +162,22 @@ export SERVER_TAG="ookla-speedtest-01"
 
 ---
 
+## Backfill alter *.gz Logs (optional)
+Standardmäßig verarbeitet das Script historische `*.gz` Archive **nicht** beim ersten Start.
+
+Wenn du ein Initial-Backfill willst (alle noch nicht verarbeiteten `*.gz`), setze:
+
+```bash
+export OOKLA_BACKFILL_GZ=1
+```
+
+Dann werden alle `OOKLA_ARCHIVE_GLOB` Treffer verarbeitet, die noch nicht in `processed_archives` stehen,
+und anschließend wird die aktive Logdatei weiter stateful gelesen.
+
+Hinweis: Bei vielen Archiven kann das initial viele Writes erzeugen.
+
+---
+
 ## Manuell ausführen
 
 ### Parser (nur Ausgabe prüfen)
